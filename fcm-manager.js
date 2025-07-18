@@ -15,12 +15,14 @@ class FCMManager {
     try {
       // Firebase 설정 (실제 프로젝트 설정으로 교체 필요)
       const firebaseConfig = {
-        apiKey: "your-api-key",
-        authDomain: "your-project.firebaseapp.com",
-        projectId: "your-project-id",
-        storageBucket: "your-project.appspot.com",
-        messagingSenderId: "your-sender-id",
-        appId: "your-app-id"
+        apiKey: "AIzaSyDLzmZyt5nZwCk98iZ6wi01y7Jxio1ppZQ",
+    authDomain: "fine-bondedwarehouse.firebaseapp.com",
+    databaseURL: "https://fine-bondedwarehouse-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "fine-bondedwarehouse",
+    storageBucket: "fine-bondedwarehouse.appspot.com",
+    messagingSenderId: "415417723331",
+    appId: "1:415417723331:web:15212f190062886281b576",
+    measurementId: "G-SWBR4359JQ"
       };
 
       // Firebase 앱 초기화
@@ -73,15 +75,9 @@ class FCMManager {
         return null;
       }
 
-      // VAPID 키 없이 먼저 시도
-      let currentToken;
-      try {
-        currentToken = await this.messaging.getToken();
-      } catch (tokenError) {
-        console.warn('Token generation without VAPID failed, trying with default configuration...', tokenError);
-        // 기본 설정으로 재시도
-        currentToken = null;
-      }
+      const currentToken = await this.messaging.getToken({
+        vapidKey: 'BMSh553qMZrt9KYOmmcjST0BBjua_nUcA3bzMO2l5OUEF6CgMnsu-_2Nf1PqwWsjuq3XEVrXZfGFPEMtE8Kr_k' // Firebase 콘솔에서 생성한 VAPID 키
+      });
 
       if (currentToken) {
         console.log('FCM Token:', currentToken);
