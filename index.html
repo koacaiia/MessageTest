@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FCM Test - Firebase Cloud Messaging</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .status {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .error {
+            border-left-color: #f44336;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .token-display {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+        
+        .in-page-notification {
+            background: #4CAF50;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .notification-content h4 {
+            margin: 0 0 5px 0;
+        }
+        
+        .notification-content p {
+            margin: 0 0 10px 0;
+        }
+        
+        .notification-content button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid white;
+            min-width: auto;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        .send-notification {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        
+        .send-notification h3 {
+            margin-top: 0;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            box-sizing: border-box;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 FCM Test</h1>
+        <p style="text-align: center; font-size: 1.2em; margin-bottom: 30px;">
+            Firebase Cloud Messaging 테스트 애플리케이션
+        </p>
+        
+        <div id="status" class="status">
+            <strong>상태:</strong> 초기화 중...
+        </div>
+        
+        <div class="button-group">
+            <button id="initBtn" onclick="initializeFCM()">FCM 초기화</button>
+            <button id="permissionBtn" onclick="requestPermission()" disabled>알림 권한 요청</button>
+            <button id="tokenBtn" onclick="getToken()" disabled>토큰 생성</button>
+            <button id="testBtn" onclick="sendTestNotification()" disabled>테스트 알림</button>
+        </div>
+        
+        <div id="tokenDisplay" class="token-display" style="display: none;">
+            <strong>FCM 토큰:</strong><br>
+            <span id="tokenValue"></span>
+        </div>
+        
+        <div class="send-notification">
+            <h3>📨 알림 전송 테스트</h3>
+            <div class="form-group">
+                <label for="notificationTitle">제목:</label>
+                <input type="text" id="notificationTitle" placeholder="알림 제목을 입력하세요" value="테스트 알림">
+            </div>
+            <div class="form-group">
+                <label for="notificationBody">내용:</label>
+                <textarea id="notificationBody" placeholder="알림 내용을 입력하세요">Firebase Cloud Messaging 테스트 메시지입니다.</textarea>
+            </div>
+            <button onclick="sendCustomNotification()">커스텀 알림 전송</button>
+        </div>
+    </div>
+    
+    <div id="notification-container" class="notification-container"></div>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+    
+    <!-- FCM Manager -->
+    <script src="fcm-manager.js"></script>
+    
+    <script>
+        let fcmInitialized = false;
+        let currentToken = null;
+        
+        // 상태 업데이트 함수
+        function updateStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<strong>상태:</strong> ${message}`;
+            statusDiv.className = isError ? 'status error' : 'status';
+        }
+        
+        // FCM 초기화
+        async function initializeFCM() {
+            updateStatus('FCM 초기화 중...');
+            
+            try {
+                const success = await window.fcmManager.initialize();
+                if (success) {
+                    fcmInitialized = true;
+                    updateStatus('FCM이 성공적으로 초기화되었습니다.');
+                    
+                    // 버튼 활성화
+                    document.getElementById('permissionBtn').disabled = false;
+                    document.getElementById('tokenBtn').disabled = false;
+                    document.getElementById('testBtn').disabled = false;
+                    document.getElementById('initBtn').disabled = true;
+                } else {
+                    updateStatus('FCM 초기화에 실패했습니다.', true);
+                }
+            } catch (error) {
+                console.error('FCM initialization error:', error);
+                updateStatus(`FCM 초기화 오류: ${error.message}`, true);
+            }
+        }
+        
+        // 알림 권한 요청
+        async function requestPermission() {
+            updateStatus('알림 권한 요청 중...');
+            
+            try {
+                const granted = await window.fcmManager.requestPermission();
+                if (granted) {
+                    updateStatus('알림 권한이 허용되었습니다.');
+                } else {
+                    updateStatus('알림 권한이 거부되었습니다.', true);
+                }
+            } catch (error) {
+                console.error('Permission request error:', error);
+                updateStatus(`권한 요청 오류: ${error.message}`, true);
+            }
+        }
+        
+        // 토큰 생성
+        async function getToken() {
+            updateStatus('FCM 토큰 생성 중...');
+            
+            try {
+                const token = await window.fcmManager.generateToken();
+                if (token) {
+                    currentToken = token;
+                    updateStatus('FCM 토큰이 생성되었습니다.');
+                    
+                    // 토큰 표시
+                    document.getElementById('tokenValue').textContent = token;
+                    document.getElementById('tokenDisplay').style.display = 'block';
+                } else {
+                    updateStatus('FCM 토큰 생성에 실패했습니다.', true);
+                }
+            } catch (error) {
+                console.error('Token generation error:', error);
+                updateStatus(`토큰 생성 오류: ${error.message}`, true);
+            }
+        }
+        
+        // 테스트 알림
+        function sendTestNotification() {
+            const payload = {
+                notification: {
+                    title: '테스트 알림',
+                    body: 'FCM 테스트 메시지입니다!',
+                    icon: '/firebase-logo.png'
+                }
+            };
+            
+            window.fcmManager.showCustomNotification(payload);
+            updateStatus('테스트 알림을 전송했습니다.');
+        }
+        
+        // 커스텀 알림 전송
+        function sendCustomNotification() {
+            const title = document.getElementById('notificationTitle').value;
+            const body = document.getElementById('notificationBody').value;
+            
+            if (!title || !body) {
+                alert('제목과 내용을 모두 입력해주세요.');
+                return;
+            }
+            
+            const payload = {
+                notification: {
+                    title: title,
+                    body: body,
+                    icon: '/firebase-logo.png'
+                }
+            };
+            
+            window.fcmManager.showCustomNotification(payload);
+            updateStatus(`커스텀 알림을 전송했습니다: ${title}`);
+        }
+        
+        // 페이지 로드 시 자동 실행
+        window.addEventListener('load', function() {
+            updateStatus('페이지가 로드되었습니다. FCM 초기화 버튼을 클릭하세요.');
+        });
+        
+        // 구형 함수 호환성 유지
+        function showMsg(message) {
+            const payload = {
+                notification: {
+                    title: '메시지',
+                    body: message || 'This is a message from the script!',
+                    icon: '/firebase-logo.png'
+                }
+            };
+            
+            if (window.fcmManager) {
+                window.fcmManager.showCustomNotification(payload);
+            } else {
+                alert(message || 'This is a message from the script!');
+            }
+        }
+    </script>
+</body>
+</html>

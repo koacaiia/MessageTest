@@ -1,0 +1,33 @@
+{
+  "name": "fcm-test-app",
+  "version": "1.0.0",
+  "description": "Firebase Cloud Messaging 테스트 애플리케이션",
+  "main": "index.html",
+  "scripts": {
+    "start": "http-server . -p 8080 -o",
+    "dev": "http-server . -p 3000 -o",
+    "build": "echo 'Static site - no build required'",
+    "deploy": "firebase deploy",
+    "deploy:github": "gh-pages -d .",
+    "test": "echo 'No tests specified'"
+  },
+  "keywords": [
+    "firebase",
+    "fcm",
+    "push-notifications",
+    "pwa",
+    "javascript"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "firebase-tools": "^12.0.0",
+    "http-server": "^14.0.0",
+    "gh-pages": "^6.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/fcm-test-app.git"
+  },
+  "homepage": "https://yourusername.github.io/fcm-test-app"
+}

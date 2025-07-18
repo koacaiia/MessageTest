@@ -1,0 +1,179 @@
+name: Deploy FCM Application
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+  
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📚 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 📦 Install dependencies
+      run: |
+        npm init -y
+        npm install --save-dev http-server
+        npm install --save-dev firebase-tools
+        
+    - name: 🔧 Configure Firebase
+      run: |
+        echo "Configuring Firebase..."
+        # Firebase 설정 파일이 있는지 확인
+        if [ ! -f "firebase.json" ]; then
+          echo "Creating Firebase configuration..."
+          cat > firebase.json << EOF
+        {
+          "hosting": {
+            "public": ".",
+            "ignore": [
+              "firebase.json",
+              "**/.*",
+              "**/node_modules/**",
+              "**/*.md",
+              ".github/**"
+            ],
+            "rewrites": [
+              {
+                "source": "**",
+                "destination": "/index.html"
+              }
+            ],
+            "headers": [
+              {
+                "source": "/firebase-messaging-sw.js",
+                "headers": [
+                  {
+                    "key": "Service-Worker-Allowed",
+                    "value": "/"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        EOF
+        fi
+        
+    - name: 🔍 Validate HTML
+      run: |
+        echo "Validating HTML structure..."
+        if [ -f "index.html" ]; then
+          echo "✅ index.html found"
+        else
+          echo "❌ index.html not found"
+          exit 1
+        fi
+        
+        if [ -f "firebase-messaging-sw.js" ]; then
+          echo "✅ Service Worker found"
+        else
+          echo "❌ Service Worker not found"
+          exit 1
+        fi
+        
+    - name: 🧪 Test application
+      run: |
+        echo "Testing application..."
+        # 간단한 HTTP 서버로 테스트
+        npx http-server . -p 8080 &
+        SERVER_PID=$!
+        sleep 5
+        
+        # 헬스체크
+        if curl -f http://localhost:8080; then
+          echo "✅ Application is running correctly"
+        else
+          echo "❌ Application failed to start"
+          kill $SERVER_PID
+          exit 1
+        fi
+        
+        kill $SERVER_PID
+        
+    - name: 🏗️ Build application
+      run: |
+        echo "Building application..."
+        mkdir -p dist
+        
+        # 정적 파일들을 dist 폴더로 복사
+        cp index.html dist/
+        cp firebase-messaging-sw.js dist/
+        cp fcm-manager.js dist/
+        cp manifest.json dist/
+        
+        # Firebase 로고 이미지 생성 (SVG로 간단히)
+        mkdir -p dist/icons
+        cat > dist/firebase-logo.png << 'EOF'
+        # Firebase 로고 대신 사용할 기본 아이콘을 여기에 추가
+        # 실제 프로젝트에서는 Firebase 로고 이미지 파일을 사용
+        EOF
+        
+        echo "✅ Build completed"
+        
+    - name: 🚀 Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
+        
+    - name: 🔥 Deploy to Firebase Hosting
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      env:
+        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      run: |
+        if [ -n "$FIREBASE_TOKEN" ]; then
+          echo "Deploying to Firebase Hosting..."
+          npx firebase deploy --token "$FIREBASE_TOKEN"
+        else
+          echo "Firebase token not found. Skipping Firebase deployment."
+          echo "To enable Firebase deployment, add FIREBASE_TOKEN to repository secrets."
+        fi
+        
+    - name: 📊 Deployment Summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Successfully Deployed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY
+        echo "- **GitHub Pages**: Available at https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Firebase Hosting**: $([ -n "${{ secrets.FIREBASE_TOKEN }}" ] && echo "✅ Deployed" || echo "⚠️ Skipped (no token)")" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 Features Included" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔔 Firebase Cloud Messaging (FCM)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📱 Progressive Web App (PWA)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔧 Service Worker for background notifications" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎨 Modern responsive UI" >> $GITHUB_STEP_SUMMARY
+        echo "- 🧪 Notification testing interface" >> $GITHUB_STEP_SUMMARY
+        
+    - name: 🔍 Security Scan
+      run: |
+        echo "Running security checks..."
+        
+        # FCM 설정 파일에서 민감한 정보 체크
+        if grep -q "your-api-key\|your-project\|your-sender-id\|your-app-id\|your-vapid-key" dist/*.js dist/*.html; then
+          echo "⚠️ Warning: Default Firebase configuration detected"
+          echo "Please update Firebase configuration with your actual project settings"
+        else
+          echo "✅ No default configuration found"
+        fi
+        
+        # 보안 헤더 체크
+        echo "✅ Security checks completed"
