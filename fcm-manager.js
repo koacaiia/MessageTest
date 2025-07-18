@@ -35,16 +35,18 @@ class FCMManager {
       // Service Worker 등록 및 Firebase Messaging과 연결
       if ('serviceWorker' in navigator) {
         try {
-          const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js', {
-            scope: './firebase-cloud-messaging-push-scope'
-          });
-          console.log('Service Worker registered successfully:', registration);
-          
-          // Firebase Messaging에 Service Worker 등록 정보 전달
-          this.messaging.useServiceWorker(registration);
+          // 먼저 Service Worker가 이미 등록되어 있는지 확인
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (!registration) {
+            // Service Worker 등록 시도
+            const newRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+            console.log('Service Worker registered successfully:', newRegistration);
+          } else {
+            console.log('Service Worker already registered:', registration);
+          }
         } catch (swError) {
-          console.warn('Service Worker registration failed, but continuing...', swError);
-          // Service Worker 등록 실패해도 FCM 기본 기능은 계속 진행
+          console.warn('Service Worker registration failed, continuing without it...', swError);
+          // Service Worker 없이도 FCM 기본 기능 계속 진행
         }
       }
 
@@ -75,9 +77,26 @@ class FCMManager {
         return null;
       }
 
-      const currentToken = await this.messaging.getToken({
-        vapidKey: 'BMSh553qMZrt9KYOmmcjST0BBjua_nUcA3bzMO2l5OUEF6CgMnsu-_2Nf1PqwWsjuq3XEVrXZfGFPEMtE8Kr_k' // Firebase 콘솔에서 생성한 VAPID 키
-      });
+      let currentToken;
+      
+      try {
+        // VAPID 키와 함께 토큰 생성 시도
+        currentToken = await this.messaging.getToken({
+          vapidKey: 'BMSh553qMZrt9KYOmmcjST0BBjua_nUcA3bzMO2l5OUEF6CgMnsu-_2Nf1PqwWsjuq3XEVrXZfGFPEMtE8Kr_k'
+        });
+      } catch (vapidError) {
+        console.warn('Token generation with VAPID failed, trying without VAPID...', vapidError);
+        
+        try {
+          // VAPID 키 없이 토큰 생성 시도
+          currentToken = await this.messaging.getToken();
+        } catch (noVapidError) {
+          console.warn('Token generation without VAPID also failed:', noVapidError);
+          // Service Worker 없이 FCM 사용하는 경우 토큰이 없을 수 있음
+          console.log('Continuing without FCM token - notifications will work in foreground only');
+          return 'no-token-available';
+        }
+      }
 
       if (currentToken) {
         console.log('FCM Token:', currentToken);
@@ -185,9 +204,17 @@ class FCMManager {
     if (!initialized) return false;
 
     const hasPermission = await this.requestPermission();
-    if (!hasPermission) return false;
+    if (!hasPermission) {
+      console.warn('Notification permission denied, but continuing with limited functionality');
+    }
 
-    await this.generateToken();
+    const token = await this.generateToken();
+    if (token && token !== 'no-token-available') {
+      console.log('FCM token generated successfully');
+    } else {
+      console.log('FCM token not available - foreground notifications only');
+    }
+    
     this.setupForegroundMessageHandler();
     this.setupTokenRefreshHandler();
 
