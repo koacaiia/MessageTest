@@ -172,6 +172,11 @@
         <div id="status" class="status">
             <strong>상태:</strong> 초기화 중...
         </div>
+
+        <div id="browserInfo" class="status" style="display: none;">
+            <strong>브라우저 정보:</strong>
+            <div id="browserDetails"></div>
+        </div>
         
         <div class="button-group">
             <button id="initBtn" onclick="initializeFCM()">FCM 초기화</button>
@@ -266,6 +271,9 @@
                     fcmInitialized = true;
                     updateStatus('FCM이 성공적으로 초기화되었습니다.');
                     
+                    // 브라우저 정보 표시
+                    showBrowserInfo();
+                    
                     // 버튼 활성화
                     document.getElementById('permissionBtn').disabled = false;
                     document.getElementById('tokenBtn').disabled = false;
@@ -273,10 +281,42 @@
                     document.getElementById('initBtn').disabled = true;
                 } else {
                     updateStatus('FCM 초기화에 실패했습니다.', true);
+                    showBrowserInfo(); // 실패해도 브라우저 정보는 표시
                 }
             } catch (error) {
                 console.error('FCM initialization error:', error);
                 updateStatus(`FCM 초기화 오류: ${error.message}`, true);
+                showBrowserInfo();
+            }
+        }
+
+        // 브라우저 정보 표시
+        function showBrowserInfo() {
+            if (window.fcmManager && window.fcmManager.browserInfo) {
+                const browserInfo = window.fcmManager.browserInfo;
+                const detailsDiv = document.getElementById('browserDetails');
+                const infoDiv = document.getElementById('browserInfo');
+                
+                let browserName = 'Unknown';
+                if (browserInfo.isChrome) browserName = 'Chrome';
+                else if (browserInfo.isFirefox) browserName = 'Firefox';
+                else if (browserInfo.isSafari) browserName = 'Safari';
+                else if (browserInfo.isEdge) browserName = 'Edge';
+                else if (browserInfo.isOpera) browserName = 'Opera';
+                
+                const supportStatus = window.fcmManager.isSupported ? '✅ 지원됨' : '❌ 제한적 지원';
+                
+                detailsDiv.innerHTML = `
+                    <div style="font-size: 12px; margin-top: 5px;">
+                        브라우저: ${browserName} ${browserInfo.isMobile ? '(모바일)' : '(데스크톱)'}<br>
+                        FCM 지원: ${supportStatus}<br>
+                        Service Worker: ${'serviceWorker' in navigator ? '✅' : '❌'}<br>
+                        Push Manager: ${'PushManager' in window ? '✅' : '❌'}<br>
+                        Notifications: ${'Notification' in window ? '✅' : '❌'}
+                    </div>
+                `;
+                
+                infoDiv.style.display = 'block';
             }
         }
         

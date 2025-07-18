@@ -1,16 +1,50 @@
-// FCM 관리 클래스 - v2.0
+// FCM 관리 클래스 - v2.1 (크로스 브라우저 지원)
 class FCMManager {
   constructor() {
     this.messaging = null;
-    this.isSupported = 'serviceWorker' in navigator && 'Notification' in window;
+    this.isSupported = this.checkBrowserSupport();
     this.currentToken = null;
-    this.version = '2.0';
+    this.version = '2.1';
+    this.browserInfo = this.getBrowserInfo();
+  }
+
+  // 브라우저 지원 상태 확인
+  checkBrowserSupport() {
+    const checks = {
+      serviceWorker: 'serviceWorker' in navigator,
+      notification: 'Notification' in window,
+      pushManager: 'PushManager' in window,
+      localStorage: typeof Storage !== 'undefined'
+    };
+    
+    console.log('Browser support check:', checks);
+    
+    // 기본 요구사항: localStorage와 Notification
+    return checks.localStorage && checks.notification;
+  }
+
+  // 브라우저 정보 수집
+  getBrowserInfo() {
+    const userAgent = navigator.userAgent;
+    const browserInfo = {
+      userAgent: userAgent,
+      isChrome: /Chrome/.test(userAgent) && /Google Inc/.test(navigator.vendor),
+      isFirefox: /Firefox/.test(userAgent),
+      isSafari: /Safari/.test(userAgent) && !/Chrome/.test(userAgent),
+      isEdge: /Edg/.test(userAgent),
+      isOpera: /OPR/.test(userAgent),
+      isMobile: /Mobile|Android|iPhone|iPad/.test(userAgent)
+    };
+    
+    console.log('Browser info:', browserInfo);
+    return browserInfo;
   }
 
   // Firebase 초기화
   async initializeFirebase() {
     if (!this.isSupported) {
       console.log('FCM is not supported in this browser');
+      console.log('Browser info:', this.browserInfo);
       return false;
     }
 
@@ -27,14 +61,35 @@ class FCMManager {
         measurementId: "G-SWBR4359JQ"
       };
 
-      // Firebase 앱 초기화
-      if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
+      // 브라우저별 Firebase 초기화 처리
+      if (typeof firebase !== 'undefined') {
+        console.log('Firebase SDK loaded successfully');
+        
+        // Firebase 앱 초기화
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+          console.log('Firebase app initialized');
+        }
+
+        // Messaging 초기화 (Safari에서는 지원되지 않을 수 있음)
+        try {
+          if (firebase.messaging.isSupported()) {
+            this.messaging = firebase.messaging();
+            console.log('Firebase messaging initialized');
+          } else {
+            console.warn('Firebase messaging not supported in this browser');
+            // Messaging 없이도 기본 기능은 동작하도록 함
+          }
+        } catch (messagingError) {
+          console.warn('Firebase messaging initialization failed:', messagingError);
+          // Messaging 실패해도 계속 진행
+        }
+      } else {
+        console.error('Firebase SDK not loaded');
+        return false;
       }
 
-      this.messaging = firebase.messaging();
-      console.log('FCM initialized successfully');
-
+      console.log('FCM initialized successfully for browser:', this.browserInfo);
       return true;
     } catch (error) {
       console.error('Firebase initialization failed:', error);
@@ -42,12 +97,47 @@ class FCMManager {
     }
   }
 
-  // 알림 권한 요청
+  // 알림 권한 요청 (브라우저별 최적화)
   async requestPermission() {
     try {
-      const permission = await Notification.requestPermission();
-      console.log('Notification permission:', permission);
-      return permission === 'granted';
+      console.log('Requesting notification permission for browser:', this.browserInfo);
+      
+      // Safari 특별 처리
+      if (this.browserInfo.isSafari) {
+        console.log('Safari detected - using legacy permission request');
+        if ('webkitNotifications' in window) {
+          const permission = window.webkitNotifications.checkPermission();
+          if (permission === 0) {
+            console.log('Safari: Notification permission already granted');
+            return true;
+          } else {
+            console.log('Safari: Requesting notification permission');
+            window.webkitNotifications.requestPermission();
+            return window.webkitNotifications.checkPermission() === 0;
+          }
+        }
+      }
+      
+      // 표준 Notification API
+      if ('Notification' in window) {
+        console.log('Current permission status:', Notification.permission);
+        
+        if (Notification.permission === 'granted') {
+          console.log('Notification permission already granted');
+          return true;
+        } else if (Notification.permission === 'denied') {
+          console.log('Notification permission denied by user');
+          return false;
+        } else {
+          console.log('Requesting notification permission');
+          const permission = await Notification.requestPermission();
+          console.log('Permission result:', permission);
+          return permission === 'granted';
+        }
+      } else {
+        console.log('Notifications not supported in this browser');
+        return false;
+      }
     } catch (error) {
       console.error('Error requesting notification permission:', error);
       return false;
@@ -105,10 +195,10 @@ class FCMManager {
     return localStorage.getItem(`topic_${topic}`) === 'subscribed';
   }
 
-  // Topic 알림 전송 (개선된 버전)
+  // Topic 알림 전송 (브라우저별 최적화)
   async sendTopicNotification(topic, title, body) {
     try {
-      console.log(`Attempting to send notification to topic: ${topic}`);
+      console.log(`Attempting to send notification to topic: ${topic} in browser:`, this.browserInfo);
       
       // 구독 확인
       const isSubscribed = this.isSubscribedToTopic(topic);
@@ -120,7 +210,7 @@ class FCMManager {
         await this.subscribeToTopic(this.currentToken || 'auto-token', topic);
       }
       
-      // 알림 데이터 생성
+      // 브라우저별 알림 전송 처리
       const payload = {
         notification: {
           title: title,
@@ -131,12 +221,19 @@ class FCMManager {
         data: {
           topic: topic,
           timestamp: new Date().toISOString(),
-          messageId: 'msg-' + Date.now()
+          messageId: 'msg-' + Date.now(),
+          browser: this.browserInfo.userAgent
         }
       };
       
       // 즉시 알림 표시
       this.showCustomNotification(payload);
+      
+      // 브라우저별 추가 처리
+      if (this.browserInfo.isSafari) {
+        // Safari에서는 추가적인 시각적 피드백 제공
+        this.showSafariSpecificNotification(title, body, topic);
+      }
       
       // 상태 저장
       const notificationHistory = JSON.parse(localStorage.getItem('notification_history') || '[]');
@@ -145,7 +242,8 @@ class FCMManager {
         title: title,
         body: body,
         timestamp: new Date().toISOString(),
-        status: 'sent'
+        status: 'sent',
+        browser: this.browserInfo
       });
       localStorage.setItem('notification_history', JSON.stringify(notificationHistory));
       
@@ -154,8 +252,58 @@ class FCMManager {
       
     } catch (error) {
       console.error('Topic notification error:', error);
+      
+      // 오류 시 폴백 알림
+      this.showFallbackNotification(title, body, topic, error.message);
       return false;
     }
+  }
+
+  // Safari 전용 알림 처리
+  showSafariSpecificNotification(title, body, topic) {
+    console.log('Showing Safari-specific notification');
+    
+    // Safari에서는 추가적인 시각적 효과나 소리 등을 추가할 수 있음
+    if ('webkitNotifications' in window) {
+      try {
+        // Safari 레거시 알림 API 사용
+        const notification = new window.webkitNotifications.createNotification(
+          './firebase-logo.png',
+          title,
+          `${body} (Topic: ${topic})`
+        );
+        notification.show();
+        
+        setTimeout(() => {
+          notification.cancel();
+        }, 5000);
+      } catch (safariError) {
+        console.log('Safari legacy notification failed:', safariError);
+      }
+    }
+  }
+
+  // 폴백 알림 (모든 브라우저 호환)
+  showFallbackNotification(title, body, topic, errorMsg) {
+    console.log('Showing fallback notification');
+    
+    // 단순한 alert 기반 폴백 (최후의 수단)
+    const fallbackMessage = `
+알림: ${title}
+내용: ${body}
+Topic: ${topic}
+${errorMsg ? `오류: ${errorMsg}` : ''}
+    `.trim();
+    
+    // 페이지 내 특별 알림 표시
+    this.showInPageNotification(
+      `🔔 ${title} (폴백)`,
+      `${body}\n\n⚠️ 브라우저 알림이 지원되지 않아 페이지 내 알림으로 표시됩니다.`,
+      topic
+    );
+    
+    // 콘솔에도 표시
+    console.warn('Fallback notification:', fallbackMessage);
   }
 
   // 포그라운드 메시지 수신 처리
@@ -172,33 +320,80 @@ class FCMManager {
     }
   }
 
-  // 커스텀 알림 표시
+  // 커스텀 알림 표시 (브라우저별 최적화)
   showCustomNotification(payload) {
     const { title, body, icon, tag } = payload.notification;
     const topic = payload.data?.topic;
     
-    // 브라우저 알림 표시
-    if (Notification.permission === 'granted') {
-      const notification = new Notification(title, {
-        body: body,
-        icon: icon || './firebase-logo.png',
-        tag: tag || 'fcm-notification',
-        requireInteraction: true
-      });
-      
-      // 클릭 이벤트 처리
-      notification.onclick = function() {
-        window.focus();
-        notification.close();
-      };
-      
-      // 5초 후 자동 닫기
-      setTimeout(() => {
-        notification.close();
-      }, 5000);
+    console.log('Showing notification in browser:', this.browserInfo);
+    
+    // 브라우저별 알림 처리
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        // 브라우저별 알림 옵션 조정
+        const notificationOptions = {
+          body: body,
+          icon: icon || './firebase-logo.png',
+          tag: tag || 'fcm-notification'
+        };
+        
+        // Chrome/Edge: 추가 기능 지원
+        if (this.browserInfo.isChrome || this.browserInfo.isEdge) {
+          notificationOptions.requireInteraction = true;
+          notificationOptions.badge = './firebase-logo.png';
+        }
+        
+        // Firefox: 기본 옵션만 사용
+        if (this.browserInfo.isFirefox) {
+          // Firefox에서는 일부 옵션이 지원되지 않을 수 있음
+          delete notificationOptions.requireInteraction;
+        }
+        
+        // Safari: 간단한 옵션만 사용
+        if (this.browserInfo.isSafari) {
+          notificationOptions = {
+            body: body,
+            icon: icon || './firebase-logo.png'
+          };
+        }
+        
+        console.log('Creating notification with options:', notificationOptions);
+        
+        const notification = new Notification(title, notificationOptions);
+        
+        // 클릭 이벤트 처리
+        notification.onclick = function(event) {
+          console.log('Notification clicked');
+          window.focus();
+          notification.close();
+        };
+        
+        // 오류 이벤트 처리
+        notification.onerror = function(error) {
+          console.error('Notification error:', error);
+        };
+        
+        // 자동 닫기 (브라우저별 시간 조정)
+        const autoCloseTime = this.browserInfo.isSafari ? 3000 : 5000;
+        setTimeout(() => {
+          try {
+            notification.close();
+          } catch (e) {
+            console.log('Notification already closed');
+          }
+        }, autoCloseTime);
+        
+        console.log('Browser notification created successfully');
+        
+      } catch (notificationError) {
+        console.error('Failed to create browser notification:', notificationError);
+        // 브라우저 알림 실패 시 페이지 내 알림으로 폴백
+      }
+    } else {
+      console.log('Browser notifications not available, showing in-page notification only');
     }
 
-    // 페이지 내 알림 표시
+    // 모든 브라우저에서 페이지 내 알림 표시
     this.showInPageNotification(title, body, topic);
   }
 
