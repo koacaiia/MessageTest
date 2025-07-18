@@ -25,12 +25,20 @@ try {
     console.log('[firebase-messaging-sw.js] Received background message ', payload);
     
     const notificationTitle = payload.notification?.title || 'New Message';
+    const notificationBody = payload.notification?.body || 'You have a new message';
+    const topicInfo = payload.data?.topic ? ` (from ${payload.data.topic})` : '';
+    
     const notificationOptions = {
-      body: payload.notification?.body || 'You have a new message',
+      body: notificationBody + topicInfo,
       icon: './firebase-logo.svg',
       badge: './firebase-logo.svg',
       tag: 'fcm-notification',
       requireInteraction: true,
+      data: {
+        topic: payload.data?.topic || 'unknown',
+        timestamp: payload.data?.timestamp || new Date().toISOString(),
+        url: '/'
+      },
       actions: [
         {
           action: 'open',

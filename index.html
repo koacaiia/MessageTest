@@ -197,6 +197,23 @@
             </div>
             <button onclick="sendCustomNotification()">커스텀 알림 전송</button>
         </div>
+
+        <div class="send-notification">
+            <h3>🔔 Topic 알림 (fine2)</h3>
+            <div class="form-group">
+                <label for="topicTitle">Topic 알림 제목:</label>
+                <input type="text" id="topicTitle" placeholder="Topic 알림 제목을 입력하세요" value="fine2 Topic 알림">
+            </div>
+            <div class="form-group">
+                <label for="topicBody">Topic 알림 내용:</label>
+                <textarea id="topicBody" placeholder="Topic 알림 내용을 입력하세요">fine2 topic으로 전송되는 알림입니다.</textarea>
+            </div>
+            <div class="button-group">
+                <button onclick="sendTopicNotification()">fine2 Topic 알림 전송</button>
+                <button onclick="subscribeToFine2()">fine2 구독</button>
+                <button onclick="unsubscribeFromFine2()">fine2 구독 해제</button>
+            </div>
+        </div>
     </div>
     
     <div id="notification-container" class="notification-container"></div>
@@ -316,6 +333,67 @@
             
             window.fcmManager.showCustomNotification(payload);
             updateStatus(`커스텀 알림을 전송했습니다: ${title}`);
+        }
+        
+        // Topic 알림 전송
+        async function sendTopicNotification() {
+            const title = document.getElementById('topicTitle').value;
+            const body = document.getElementById('topicBody').value;
+            
+            if (!title || !body) {
+                alert('제목과 내용을 모두 입력해주세요.');
+                return;
+            }
+            
+            updateStatus('fine2 topic 알림 전송 중...');
+            
+            try {
+                const result = await window.fcmManager.sendTopicNotification('fine2', title, body);
+                if (result) {
+                    updateStatus(`fine2 topic 알림이 전송되었습니다: ${title}`);
+                } else {
+                    updateStatus('fine2 topic 알림 전송에 실패했습니다.', true);
+                }
+            } catch (error) {
+                console.error('Topic notification error:', error);
+                updateStatus(`Topic 알림 전송 오류: ${error.message}`, true);
+            }
+        }
+        
+        // fine2 topic 구독
+        async function subscribeToFine2() {
+            if (!currentToken || currentToken === 'no-token-available') {
+                alert('FCM 토큰이 필요합니다. 먼저 토큰을 생성해주세요.');
+                return;
+            }
+            
+            updateStatus('fine2 topic 구독 중...');
+            
+            try {
+                await window.fcmManager.subscribeToTopic(currentToken, 'fine2');
+                updateStatus('fine2 topic 구독이 완료되었습니다.');
+            } catch (error) {
+                console.error('Topic subscription error:', error);
+                updateStatus(`Topic 구독 오류: ${error.message}`, true);
+            }
+        }
+        
+        // fine2 topic 구독 해제
+        async function unsubscribeFromFine2() {
+            if (!currentToken || currentToken === 'no-token-available') {
+                alert('FCM 토큰이 필요합니다. 먼저 토큰을 생성해주세요.');
+                return;
+            }
+            
+            updateStatus('fine2 topic 구독 해제 중...');
+            
+            try {
+                await window.fcmManager.unsubscribeFromTopic(currentToken, 'fine2');
+                updateStatus('fine2 topic 구독이 해제되었습니다.');
+            } catch (error) {
+                console.error('Topic unsubscription error:', error);
+                updateStatus(`Topic 구독 해제 오류: ${error.message}`, true);
+            }
         }
         
         // 페이지 로드 시 자동 실행

@@ -102,6 +102,8 @@ class FCMManager {
         console.log('FCM Token:', currentToken);
         // 서버로 토큰 전송
         await this.sendTokenToServer(currentToken);
+        // fine2 topic 구독
+        await this.subscribeToTopic(currentToken, 'fine2');
         return currentToken;
       } else {
         console.log('No registration token available.');
@@ -109,6 +111,88 @@ class FCMManager {
       }
     } catch (error) {
       console.error('An error occurred while retrieving token:', error);
+      return null;
+    }
+  }
+
+  // Topic 구독
+  async subscribeToTopic(token, topic) {
+    try {
+      const response = await fetch('https://iid.googleapis.com/iid/v1/' + token + '/rel/topics/' + topic, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'key=AAAAyMdaG0E:APA91bGQNgO2xV0_6Wm5uZ8-rOQXrFhqyTx_7VYpJYP5mNFQhSjGpN0KBZT9hGmHzVl7LO3tYXR8I_TZkNhwKjGrW4KCdE-vBJnPQzFqGxCp2LS8-9IJZ8cDhRjNwCbE6LvKdBwFLqN',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        console.log('Successfully subscribed to topic:', topic);
+      } else {
+        console.error('Failed to subscribe to topic:', topic, response.status);
+      }
+    } catch (error) {
+      console.error('Error subscribing to topic:', error);
+    }
+  }
+
+  // Topic에서 구독 해제
+  async unsubscribeFromTopic(token, topic) {
+    try {
+      const response = await fetch('https://iid.googleapis.com/iid/v1/' + token + '/rel/topics/' + topic, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': 'key=AAAAyMdaG0E:APA91bGQNgO2xV0_6Wm5uZ8-rOQXrFhqyTx_7VYpJYP5mNFQhSjGpN0KBZT9hGmHzVl7LO3tYXR8I_TZkNhwKjGrW4KCdE-vBJnPQzFqGxCp2LS8-9IJZ8cDhRjNwCbE6LvKdBwFLqN',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        console.log('Successfully unsubscribed from topic:', topic);
+      } else {
+        console.error('Failed to unsubscribe from topic:', topic, response.status);
+      }
+    } catch (error) {
+      console.error('Error unsubscribing from topic:', error);
+    }
+  }
+
+  // Topic으로 알림 전송 (서버에서 실행해야 함)
+  async sendTopicNotification(topic, title, body) {
+    try {
+      const message = {
+        to: '/topics/' + topic,
+        notification: {
+          title: title,
+          body: body,
+          icon: './firebase-logo.svg'
+        },
+        data: {
+          topic: topic,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'key=AAAAyMdaG0E:APA91bGQNgO2xV0_6Wm5uZ8-rOQXrFhqyTx_7VYpJYP5mNFQhSjGpN0KBZT9hGmHzVl7LO3tYXR8I_TZkNhwKjGrW4KCdE-vBJnPQzFqGxCp2LS8-9IJZ8cDhRjNwCbE6LvKdBwFLqN',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(message)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Topic notification sent successfully:', result);
+        return result;
+      } else {
+        const error = await response.text();
+        console.error('Failed to send topic notification:', error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error sending topic notification:', error);
       return null;
     }
   }
@@ -149,18 +233,23 @@ class FCMManager {
   // 커스텀 알림 표시
   showCustomNotification(payload) {
     const { title, body, icon } = payload.notification;
+    const topicInfo = payload.data?.topic ? ` (from ${payload.data.topic})` : '';
     
     // 브라우저 알림 표시
     if (Notification.permission === 'granted') {
       new Notification(title, {
-        body: body,
+        body: body + topicInfo,
         icon: icon || './firebase-logo.png',
-        tag: 'fcm-notification'
+        tag: 'fcm-notification',
+        data: {
+          topic: payload.data?.topic || 'unknown',
+          timestamp: payload.data?.timestamp || new Date().toISOString()
+        }
       });
     }
 
     // 페이지 내 알림 표시
-    this.showInPageNotification(title, body);
+    this.showInPageNotification(title, body + topicInfo);
   }
 
   // 페이지 내 알림 표시
