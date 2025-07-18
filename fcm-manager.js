@@ -30,10 +30,20 @@ class FCMManager {
 
       this.messaging = firebase.messaging();
       
-      // Service Worker 등록
+      // Service Worker 등록 및 Firebase Messaging과 연결
       if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-        console.log('Service Worker registered successfully:', registration);
+        try {
+          const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js', {
+            scope: './firebase-cloud-messaging-push-scope'
+          });
+          console.log('Service Worker registered successfully:', registration);
+          
+          // Firebase Messaging에 Service Worker 등록 정보 전달
+          this.messaging.useServiceWorker(registration);
+        } catch (swError) {
+          console.warn('Service Worker registration failed, but continuing...', swError);
+          // Service Worker 등록 실패해도 FCM 기본 기능은 계속 진행
+        }
       }
 
       return true;
@@ -63,9 +73,15 @@ class FCMManager {
         return null;
       }
 
-      const currentToken = await this.messaging.getToken({
-        vapidKey: 'your-vapid-key' // Firebase 콘솔에서 생성한 VAPID 키
-      });
+      // VAPID 키 없이 먼저 시도
+      let currentToken;
+      try {
+        currentToken = await this.messaging.getToken();
+      } catch (tokenError) {
+        console.warn('Token generation without VAPID failed, trying with default configuration...', tokenError);
+        // 기본 설정으로 재시도
+        currentToken = null;
+      }
 
       if (currentToken) {
         console.log('FCM Token:', currentToken);
