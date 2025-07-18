@@ -1,9 +1,10 @@
-// FCM 관리 클래스
+// FCM 관리 클래스 - v2.0
 class FCMManager {
   constructor() {
     this.messaging = null;
     this.isSupported = 'serviceWorker' in navigator && 'Notification' in window;
     this.currentToken = null;
+    this.version = '2.0';
   }
 
   // Firebase 초기화
@@ -377,22 +378,31 @@ class FCMManager {
 
   // 대기중 알림 추가 (테스트용)
   addPendingNotification(title, body, topic = 'fine2') {
-    const pendingNotifications = this.getPendingNotificationsFromStorage();
+    console.log('addPendingNotification called with:', { title, body, topic });
     
-    const newNotification = {
-      id: 'pending-' + Date.now(),
-      title: title,
-      body: body,
-      topic: topic,
-      timestamp: new Date().toISOString(),
-      status: 'pending'
-    };
-    
-    pendingNotifications.push(newNotification);
-    localStorage.setItem('pending_notifications', JSON.stringify(pendingNotifications));
-    
-    console.log('Added pending notification:', newNotification);
-    return newNotification;
+    try {
+      const pendingNotifications = this.getPendingNotificationsFromStorage();
+      
+      const newNotification = {
+        id: 'pending-' + Date.now(),
+        title: title,
+        body: body,
+        topic: topic,
+        timestamp: new Date().toISOString(),
+        status: 'pending'
+      };
+      
+      pendingNotifications.push(newNotification);
+      localStorage.setItem('pending_notifications', JSON.stringify(pendingNotifications));
+      
+      console.log('Added pending notification:', newNotification);
+      console.log('Total pending notifications:', pendingNotifications.length);
+      
+      return newNotification;
+    } catch (error) {
+      console.error('Error in addPendingNotification:', error);
+      throw error;
+    }
   }
 
   // 대기중 알림 제거

@@ -418,6 +418,8 @@
 
         // 대기중 알림 추가
         function addPendingNotification() {
+            console.log('addPendingNotification function called');
+            
             const title = document.getElementById('pendingTitle').value;
             const body = document.getElementById('pendingBody').value;
             
@@ -426,12 +428,28 @@
                 return;
             }
             
+            console.log('FCM Manager check:', window.fcmManager);
+            
             if (window.fcmManager) {
-                const notification = window.fcmManager.addPendingNotification(title, body);
-                updateStatus(`대기중 알림이 추가되었습니다: ${title}`);
-                updatePendingCount();
+                console.log('FCM Manager methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(window.fcmManager)));
+                
+                if (typeof window.fcmManager.addPendingNotification === 'function') {
+                    try {
+                        const notification = window.fcmManager.addPendingNotification(title, body);
+                        updateStatus(`대기중 알림이 추가되었습니다: ${title}`);
+                        updatePendingCount();
+                        console.log('Notification added successfully:', notification);
+                    } catch (error) {
+                        console.error('Error calling addPendingNotification:', error);
+                        updateStatus(`대기중 알림 추가 오류: ${error.message}`, true);
+                    }
+                } else {
+                    console.error('addPendingNotification is not a function');
+                    updateStatus('addPendingNotification 함수를 찾을 수 없습니다.', true);
+                }
             } else {
-                alert('FCM Manager가 초기화되지 않았습니다.');
+                console.error('FCM Manager not initialized');
+                alert('FCM Manager가 초기화되지 않았습니다. 먼저 FCM 초기화를 해주세요.');
             }
         }
 
