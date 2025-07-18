@@ -32,7 +32,7 @@ class FCMManager {
       
       // Service Worker 등록
       if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
         console.log('Service Worker registered successfully:', registration);
       }
 
@@ -123,7 +123,7 @@ class FCMManager {
     if (Notification.permission === 'granted') {
       new Notification(title, {
         body: body,
-        icon: icon || '/firebase-logo.png',
+        icon: icon || './firebase-logo.png',
         tag: 'fcm-notification'
       });
     }

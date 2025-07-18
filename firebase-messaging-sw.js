@@ -26,8 +26,8 @@ messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: '/firebase-logo.png',
-    badge: '/firebase-logo.png',
+    icon: './firebase-logo.png',
+    badge: './firebase-logo.png',
     tag: 'fcm-notification',
     requireInteraction: true,
     actions: [

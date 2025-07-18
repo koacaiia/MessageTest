@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FCM Test - Firebase Cloud Messaging</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="./manifest.json">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -286,7 +286,7 @@
                 notification: {
                     title: '테스트 알림',
                     body: 'FCM 테스트 메시지입니다!',
-                    icon: '/firebase-logo.png'
+                    icon: './firebase-logo.png'
                 }
             };
             
@@ -308,7 +308,7 @@
                 notification: {
                     title: title,
                     body: body,
-                    icon: '/firebase-logo.png'
+                    icon: './firebase-logo.png'
                 }
             };
             
@@ -327,7 +327,7 @@
                 notification: {
                     title: '메시지',
                     body: message || 'This is a message from the script!',
-                    icon: '/firebase-logo.png'
+                    icon: './firebase-logo.png'
                 }
             };
             
