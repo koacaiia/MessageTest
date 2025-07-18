@@ -214,6 +214,26 @@
                 <button onclick="unsubscribeFromFine2()">fine2 구독 해제</button>
             </div>
         </div>
+
+        <div class="send-notification">
+            <h3>⏰ 대기중 알림 관리</h3>
+            <div class="form-group">
+                <label for="pendingTitle">대기중 알림 제목:</label>
+                <input type="text" id="pendingTitle" placeholder="대기중 알림 제목을 입력하세요" value="대기중 테스트 알림">
+            </div>
+            <div class="form-group">
+                <label for="pendingBody">대기중 알림 내용:</label>
+                <textarea id="pendingBody" placeholder="대기중 알림 내용을 입력하세요">이것은 대기중이었던 알림입니다.</textarea>
+            </div>
+            <div class="button-group">
+                <button onclick="addPendingNotification()">대기중 알림 추가</button>
+                <button onclick="checkPendingNotifications()">대기중 알림 확인</button>
+                <button onclick="clearPendingNotifications()">대기중 알림 삭제</button>
+            </div>
+            <div id="pendingCount" class="status" style="margin-top: 10px; display: none;">
+                <strong>대기중 알림:</strong> <span id="pendingCountValue">0</span>개
+            </div>
+        </div>
     </div>
     
     <div id="notification-container" class="notification-container"></div>
@@ -395,10 +415,80 @@
                 updateStatus(`Topic 구독 해제 오류: ${error.message}`, true);
             }
         }
+
+        // 대기중 알림 추가
+        function addPendingNotification() {
+            const title = document.getElementById('pendingTitle').value;
+            const body = document.getElementById('pendingBody').value;
+            
+            if (!title || !body) {
+                alert('제목과 내용을 모두 입력해주세요.');
+                return;
+            }
+            
+            if (window.fcmManager) {
+                const notification = window.fcmManager.addPendingNotification(title, body);
+                updateStatus(`대기중 알림이 추가되었습니다: ${title}`);
+                updatePendingCount();
+            } else {
+                alert('FCM Manager가 초기화되지 않았습니다.');
+            }
+        }
+
+        // 대기중 알림 확인
+        async function checkPendingNotifications() {
+            updateStatus('대기중 알림 확인 중...');
+            
+            try {
+                if (window.fcmManager) {
+                    const count = await window.fcmManager.checkPendingNotifications();
+                    if (count > 0) {
+                        updateStatus(`${count}개의 대기중 알림을 처리했습니다.`);
+                    } else {
+                        updateStatus('대기중인 알림이 없습니다.');
+                    }
+                    updatePendingCount();
+                } else {
+                    updateStatus('FCM Manager가 초기화되지 않았습니다.', true);
+                }
+            } catch (error) {
+                console.error('Pending notification check error:', error);
+                updateStatus(`대기중 알림 확인 오류: ${error.message}`, true);
+            }
+        }
+
+        // 대기중 알림 삭제
+        function clearPendingNotifications() {
+            if (window.fcmManager) {
+                window.fcmManager.clearPendingNotifications();
+                updateStatus('모든 대기중 알림이 삭제되었습니다.');
+                updatePendingCount();
+            } else {
+                alert('FCM Manager가 초기화되지 않았습니다.');
+            }
+        }
+
+        // 대기중 알림 개수 업데이트
+        function updatePendingCount() {
+            if (window.fcmManager) {
+                const pendingNotifications = window.fcmManager.getPendingNotificationsFromStorage();
+                const count = pendingNotifications.length;
+                
+                const countElement = document.getElementById('pendingCountValue');
+                const countContainer = document.getElementById('pendingCount');
+                
+                if (countElement && countContainer) {
+                    countElement.textContent = count;
+                    countContainer.style.display = count > 0 ? 'block' : 'none';
+                }
+            }
+        }
         
         // 페이지 로드 시 자동 실행
         window.addEventListener('load', function() {
             updateStatus('페이지가 로드되었습니다. FCM 초기화 버튼을 클릭하세요.');
+            // 대기중 알림 개수 초기 업데이트
+            setTimeout(updatePendingCount, 1000);
         });
         
         // 구형 함수 호환성 유지

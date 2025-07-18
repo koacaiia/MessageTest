@@ -274,6 +274,158 @@ class FCMManager {
     localStorage.removeItem('notification_history');
   }
 
+  // 대기중 알림 확인 및 처리
+  async checkPendingNotifications() {
+    try {
+      console.log('Checking for pending notifications...');
+      
+      // Service Worker 등록 확인
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) {
+          console.log('Service Worker is registered');
+          
+          // 대기중인 알림 시뮬레이션 (실제로는 서버에서 가져와야 함)
+          const pendingNotifications = this.getPendingNotificationsFromStorage();
+          
+          if (pendingNotifications.length > 0) {
+            console.log(`Found ${pendingNotifications.length} pending notifications`);
+            
+            for (const notification of pendingNotifications) {
+              await this.processPendingNotification(notification);
+            }
+            
+            // 처리된 알림 제거
+            this.clearPendingNotifications();
+            return pendingNotifications.length;
+          } else {
+            console.log('No pending notifications found');
+            return 0;
+          }
+        } else {
+          console.log('Service Worker not registered, checking local pending notifications only');
+          return this.checkLocalPendingNotifications();
+        }
+      } else {
+        console.log('Service Worker not supported, checking local notifications only');
+        return this.checkLocalPendingNotifications();
+      }
+    } catch (error) {
+      console.error('Error checking pending notifications:', error);
+      return 0;
+    }
+  }
+
+  // 로컬 저장소에서 대기중 알림 가져오기
+  getPendingNotificationsFromStorage() {
+    const pending = localStorage.getItem('pending_notifications');
+    return pending ? JSON.parse(pending) : [];
+  }
+
+  // 로컬 대기중 알림 확인
+  checkLocalPendingNotifications() {
+    const pendingNotifications = this.getPendingNotificationsFromStorage();
+    
+    if (pendingNotifications.length > 0) {
+      console.log(`Processing ${pendingNotifications.length} local pending notifications`);
+      
+      pendingNotifications.forEach(notification => {
+        this.processPendingNotification(notification);
+      });
+      
+      this.clearPendingNotifications();
+      return pendingNotifications.length;
+    }
+    
+    return 0;
+  }
+
+  // 대기중 알림 처리
+  async processPendingNotification(notification) {
+    try {
+      console.log('Processing pending notification:', notification);
+      
+      const payload = {
+        notification: {
+          title: notification.title + ' (대기중 알림)',
+          body: notification.body,
+          icon: './firebase-logo.png',
+          tag: `pending-${notification.id || Date.now()}`
+        },
+        data: {
+          topic: notification.topic || 'pending',
+          timestamp: notification.timestamp || new Date().toISOString(),
+          type: 'pending'
+        }
+      };
+      
+      this.showCustomNotification(payload);
+      
+      // 알림 히스토리에 추가
+      const history = this.getNotificationHistory();
+      history.push({
+        ...notification,
+        status: 'processed_from_pending',
+        processedAt: new Date().toISOString()
+      });
+      localStorage.setItem('notification_history', JSON.stringify(history));
+      
+    } catch (error) {
+      console.error('Error processing pending notification:', error);
+    }
+  }
+
+  // 대기중 알림 추가 (테스트용)
+  addPendingNotification(title, body, topic = 'fine2') {
+    const pendingNotifications = this.getPendingNotificationsFromStorage();
+    
+    const newNotification = {
+      id: 'pending-' + Date.now(),
+      title: title,
+      body: body,
+      topic: topic,
+      timestamp: new Date().toISOString(),
+      status: 'pending'
+    };
+    
+    pendingNotifications.push(newNotification);
+    localStorage.setItem('pending_notifications', JSON.stringify(pendingNotifications));
+    
+    console.log('Added pending notification:', newNotification);
+    return newNotification;
+  }
+
+  // 대기중 알림 제거
+  clearPendingNotifications() {
+    localStorage.removeItem('pending_notifications');
+    console.log('Cleared all pending notifications');
+  }
+
+  // 정기적 대기중 알림 확인 시작
+  startPendingNotificationChecker(intervalMs = 30000) { // 30초마다 확인
+    if (this.pendingCheckInterval) {
+      clearInterval(this.pendingCheckInterval);
+    }
+    
+    console.log(`Starting pending notification checker (every ${intervalMs}ms)`);
+    
+    this.pendingCheckInterval = setInterval(async () => {
+      const count = await this.checkPendingNotifications();
+      if (count > 0) {
+        console.log(`Processed ${count} pending notifications`);
+      }
+    }, intervalMs);
+  }
+
+  // 정기적 확인 중지
+  stopPendingNotificationChecker() {
+    if (this.pendingCheckInterval) {
+      clearInterval(this.pendingCheckInterval);
+      this.pendingCheckInterval = null;
+      console.log('Stopped pending notification checker');
+    }
+  }
+
   // FCM 초기화 및 설정
   async initialize() {
     console.log('Initializing FCM Manager...');
@@ -298,6 +450,15 @@ class FCMManager {
     
     this.setupForegroundMessageHandler();
     this.setupTokenRefreshHandler();
+
+    // 대기중 알림 확인
+    const pendingCount = await this.checkPendingNotifications();
+    if (pendingCount > 0) {
+      console.log(`Found and processed ${pendingCount} pending notifications`);
+    }
+
+    // 정기적 대기중 알림 확인 시작
+    this.startPendingNotificationChecker();
 
     console.log('FCM Manager initialized successfully');
     return true;
