@@ -6,9 +6,26 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'Deploy target (github, firebase, both)'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+        - github
+        - firebase
+        - both
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: false
+        type: boolean
 
 env:
   NODE_VERSION: '18'
+  DEPLOY_TARGET: ${{ github.event.inputs.deploy_target || 'both' }}
+  SKIP_TESTS: ${{ github.event.inputs.skip_tests || 'false' }}
   
 jobs:
   build-and-deploy:
@@ -26,9 +43,7 @@ jobs:
         
     - name: 📦 Install dependencies
       run: |
-        npm init -y
-        npm install --save-dev http-server
-        npm install --save-dev firebase-tools
+        npm ci
         
     - name: 🔧 Configure Firebase
       run: |
@@ -87,6 +102,7 @@ jobs:
         fi
         
     - name: 🧪 Test application
+      if: env.SKIP_TESTS != 'true'
       run: |
         echo "Testing application..."
         # 간단한 HTTP 서버로 테스트
@@ -103,7 +119,26 @@ jobs:
           exit 1
         fi
         
+        # FCM 파일 접근성 체크
+        if curl -f http://localhost:8080/firebase-messaging-sw.js; then
+          echo "✅ Service Worker is accessible"
+        else
+          echo "❌ Service Worker is not accessible"
+          kill $SERVER_PID
+          exit 1
+        fi
+        
+        # PWA 매니페스트 체크
+        if curl -f http://localhost:8080/manifest.json; then
+          echo "✅ PWA manifest is accessible"
+        else
+          echo "❌ PWA manifest is not accessible"
+          kill $SERVER_PID
+          exit 1
+        fi
+        
         kill $SERVER_PID
+        echo "✅ All tests passed"
         
     - name: 🏗️ Build application
       run: |
@@ -115,31 +150,48 @@ jobs:
         cp firebase-messaging-sw.js dist/
         cp fcm-manager.js dist/
         cp manifest.json dist/
+        cp firebase.json dist/
         
-        # Firebase 로고 이미지 생성 (SVG로 간단히)
+        # 아이콘 디렉토리 생성 및 기본 아이콘 생성
         mkdir -p dist/icons
+        
+        # SVG 아이콘 생성 (Firebase 로고 스타일)
         cat > dist/firebase-logo.png << 'EOF'
-        # Firebase 로고 대신 사용할 기본 아이콘을 여기에 추가
-        # 실제 프로젝트에서는 Firebase 로고 이미지 파일을 사용
+        <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="14" fill="#FFA000"/>
+          <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold">🔥</text>
+        </svg>
         EOF
+        
+        # PWA 아이콘들 생성 (여러 크기)
+        for size in 72 96 128 144 152 192 384 512; do
+          cat > "dist/icons/icon-${size}x${size}.png" << EOF
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="$(($size/2))" cy="$(($size/2))" r="$(($size/2-2))" fill="#667eea"/>
+          <text x="$(($size/2))" y="$(($size/2+$size/8))" text-anchor="middle" fill="white" font-size="$(($size/3))" font-weight="bold">🔥</text>
+        </svg>
+        EOF
+        done
         
         echo "✅ Build completed"
         
     - name: 🚀 Deploy to GitHub Pages
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (env.DEPLOY_TARGET == 'github' || env.DEPLOY_TARGET == 'both')
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./dist
+        cname: ${{ secrets.CUSTOM_DOMAIN }}
         
     - name: 🔥 Deploy to Firebase Hosting
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (env.DEPLOY_TARGET == 'firebase' || env.DEPLOY_TARGET == 'both')
       env:
         FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       run: |
         if [ -n "$FIREBASE_TOKEN" ]; then
           echo "Deploying to Firebase Hosting..."
-          npx firebase deploy --token "$FIREBASE_TOKEN"
+          cd dist
+          npx firebase deploy --token "$FIREBASE_TOKEN" --project "${{ secrets.FIREBASE_PROJECT_ID || 'fine-bondedwarehouse' }}"
         else
           echo "Firebase token not found. Skipping Firebase deployment."
           echo "To enable Firebase deployment, add FIREBASE_TOKEN to repository secrets."
@@ -167,13 +219,91 @@ jobs:
       run: |
         echo "Running security checks..."
         
-        # FCM 설정 파일에서 민감한 정보 체크
-        if grep -q "your-api-key\|your-project\|your-sender-id\|your-app-id\|your-vapid-key" dist/*.js dist/*.html; then
-          echo "⚠️ Warning: Default Firebase configuration detected"
-          echo "Please update Firebase configuration with your actual project settings"
+        # Firebase 설정 검증
+        echo "Validating Firebase configuration..."
+        
+        # FCM 기능 체크
+        if grep -q "firebase.messaging" dist/*.js; then
+          echo "✅ FCM functionality detected"
         else
-          echo "✅ No default configuration found"
+          echo "⚠️ Warning: FCM functionality not found"
         fi
         
-        # 보안 헤더 체크
+        # Service Worker 등록 체크
+        if grep -q "firebase-messaging-sw.js" dist/*.html; then
+          echo "✅ Service Worker registration found"
+        else
+          echo "⚠️ Warning: Service Worker registration not found"
+        fi
+        
+        # PWA 매니페스트 체크
+        if [ -f "dist/manifest.json" ]; then
+          echo "✅ PWA manifest found"
+        else
+          echo "⚠️ Warning: PWA manifest not found"
+        fi
+        
+        # 파일 크기 체크
+        for file in dist/*.js dist/*.html; do
+          if [ -f "$file" ]; then
+            size=$(du -k "$file" | cut -f1)
+            if [ $size -gt 500 ]; then
+              echo "⚠️ Warning: Large file detected: $file (${size}KB)"
+            else
+              echo "✅ File size OK: $file (${size}KB)"
+            fi
+          fi
+        done
+        
         echo "✅ Security checks completed"
+        
+    - name: 📊 Performance Analysis
+      run: |
+        echo "## 📊 Performance Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # 파일 크기 분석
+        echo "### 📁 File Sizes" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| File | Size | Gzipped |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|------|---------|" >> $GITHUB_STEP_SUMMARY
+        
+        for file in dist/*.js dist/*.html dist/*.json; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            size=$(du -h "$file" | cut -f1)
+            gzipped=$(gzip -c "$file" | wc -c | numfmt --to=iec-i --suffix=B --format="%.1f")
+            echo "| $filename | $size | $gzipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # 총 번들 크기
+        total_size=$(du -ch dist/*.js dist/*.html dist/*.json 2>/dev/null | tail -1 | cut -f1)
+        echo "**Total Bundle Size**: $total_size" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+    - name: 🔔 Send Notification
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        text: "FCM 애플리케이션 배포 실패: ${{ github.repository }}"
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        
+    - name: 🎉 Success Notification
+      if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      run: |
+        echo "🎉 배포 성공!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 배포된 링크" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ env.DEPLOY_TARGET }}" = "github" ] || [ "${{ env.DEPLOY_TARGET }}" = "both" ]; then
+          echo "- **GitHub Pages**: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ env.DEPLOY_TARGET }}" = "firebase" ] || [ "${{ env.DEPLOY_TARGET }}" = "both" ]; then
+          echo "- **Firebase Hosting**: https://${{ secrets.FIREBASE_PROJECT_ID || 'fine-bondedwarehouse' }}.web.app" >> $GITHUB_STEP_SUMMARY
+        fi

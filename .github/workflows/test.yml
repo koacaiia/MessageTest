@@ -1,0 +1,150 @@
+name: Test FCM Application
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📚 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 📦 Install dependencies
+      run: npm ci
+      
+    - name: 🔍 Lint Check
+      run: |
+        echo "Running lint checks..."
+        
+        # HTML 유효성 검사
+        if command -v tidy &> /dev/null; then
+          echo "Checking HTML validity..."
+          tidy -q -e index.html || echo "HTML validation completed with warnings"
+        fi
+        
+        # JavaScript 문법 검사
+        echo "Checking JavaScript syntax..."
+        node -c fcm-manager.js
+        node -c firebase-messaging-sw.js
+        
+        # JSON 유효성 검사
+        echo "Checking JSON files..."
+        cat manifest.json | jq . > /dev/null
+        cat firebase.json | jq . > /dev/null
+        cat package.json | jq . > /dev/null
+        
+        echo "✅ All lint checks passed"
+        
+    - name: 🔒 Security Check
+      run: |
+        echo "Running security checks..."
+        
+        # 민감한 정보 체크
+        if grep -r "password\|secret\|private" --include="*.js" --include="*.html" --include="*.json" . --exclude-dir=node_modules; then
+          echo "⚠️ Warning: Potential sensitive information found"
+        else
+          echo "✅ No sensitive information detected"
+        fi
+        
+        # FCM 설정 검증
+        if grep -q "firebase.initializeApp" firebase-messaging-sw.js && grep -q "firebase.initializeApp" fcm-manager.js; then
+          echo "✅ Firebase initialization found"
+        else
+          echo "❌ Firebase initialization missing"
+          exit 1
+        fi
+        
+    - name: 🧪 Unit Tests
+      run: |
+        echo "Running unit tests..."
+        
+        # Service Worker 등록 테스트
+        if grep -q "firebase-messaging-sw.js" index.html; then
+          echo "✅ Service Worker registration found"
+        else
+          echo "❌ Service Worker registration missing"
+          exit 1
+        fi
+        
+        # PWA 매니페스트 링크 테스트
+        if grep -q "manifest.json" index.html; then
+          echo "✅ PWA manifest link found"
+        else
+          echo "❌ PWA manifest link missing"
+          exit 1
+        fi
+        
+        # FCM 관리자 스크립트 테스트
+        if grep -q "fcm-manager.js" index.html; then
+          echo "✅ FCM manager script found"
+        else
+          echo "❌ FCM manager script missing"
+          exit 1
+        fi
+        
+        echo "✅ All unit tests passed"
+        
+    - name: 🌐 Browser Compatibility Test
+      run: |
+        echo "Running browser compatibility checks..."
+        
+        # Service Worker 지원 체크
+        if grep -q "serviceWorker.*in.*navigator" fcm-manager.js; then
+          echo "✅ Service Worker compatibility check found"
+        else
+          echo "⚠️ Service Worker compatibility check missing"
+        fi
+        
+        # Notification API 지원 체크
+        if grep -q "Notification.*in.*window" fcm-manager.js; then
+          echo "✅ Notification API compatibility check found"
+        else
+          echo "⚠️ Notification API compatibility check missing"
+        fi
+        
+        echo "✅ Browser compatibility checks completed"
+        
+    - name: 📊 Code Quality Report
+      run: |
+        echo "## 📊 Code Quality Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # 파일 통계
+        echo "### 📁 File Statistics" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| File | Lines | Size |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|-------|------|" >> $GITHUB_STEP_SUMMARY
+        
+        for file in *.js *.html *.json; do
+          if [ -f "$file" ]; then
+            lines=$(wc -l < "$file")
+            size=$(du -h "$file" | cut -f1)
+            echo "| $file | $lines | $size |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # 코드 복잡도 (간단한 메트릭)
+        echo "### 🧮 Code Metrics" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        total_js_lines=$(find . -name "*.js" -not -path "./node_modules/*" -exec wc -l {} + | tail -1 | cut -d' ' -f1)
+        total_functions=$(grep -r "function\|=>" . --include="*.js" --exclude-dir=node_modules | wc -l)
+        
+        echo "- **Total JavaScript Lines**: $total_js_lines" >> $GITHUB_STEP_SUMMARY
+        echo "- **Total Functions**: $total_functions" >> $GITHUB_STEP_SUMMARY
+        echo "- **Average Lines per Function**: $((total_js_lines / (total_functions + 1)))" >> $GITHUB_STEP_SUMMARY
